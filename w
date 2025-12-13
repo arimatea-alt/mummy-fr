@@ -12,7 +12,7 @@ local player = Players.LocalPlayer
 local LIVES_FOLDER_NAME = "Lives"
 local MUMMY_NAME        = "Mummy Lv.40"
 
-local APPROACH_DISTANCE = 7
+local APPROACH_DISTANCE = 5
 local TWEEN_TIME        = 0.35
 
 local ATTACK_DELAY      = 0.5
