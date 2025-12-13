@@ -32,7 +32,7 @@ end
 
 local function clickWindTourist()
     local cd = Workspace.NPC.WindTourist.ClickDetector
-    cd.MaxActivationDistance = 1000000
+    cd.MaxActivationDistance = 100000000000
     if fireclickdetector then
         fireclickdetector(cd)
     end
