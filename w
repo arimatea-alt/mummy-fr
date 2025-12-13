@@ -9,14 +9,15 @@ local StarterGui        = game:GetService("StarterGui")
 local player = Players.LocalPlayer
 
 --================ CONFIG ================--
-local LIVES_FOLDER_NAME = "Lives"
-local MUMMY_NAME        = "Mummy Lv.40"
+local LIVES_FOLDER_NAME  = "Lives"
+local MUMMY_NAME         = "Mummy Lv.40"
+local ANCIENT_MUMMY_NAME = "Ancient Mummy Lv.50"
 
-local APPROACH_DISTANCE = 5
-local TWEEN_TIME        = 0.35
+local TWEEN_TIME_TO_SPOT = 1.5
+local APPROACH_DISTANCE  = 5
 
-local ATTACK_DELAY      = 0.5
-local MOUSE_CFRAME      = CFrame.new(-2678.40234375, 0.7871074, -674.6618652, 1,0,0, 0,1,0, 0,0,1)
+local ATTACK_DELAY       = 0.5
+local MOUSE_CFRAME       = CFrame.new(-2678.40234375, 0.7871074, -674.6618652, 1,0,0, 0,1,0, 0,0,1)
 
 --================ QUEST DIALOG ================--
 
@@ -32,7 +33,7 @@ end
 
 local function clickWindTourist()
     local cd = Workspace.NPC.WindTourist.ClickDetector
-    cd.MaxActivationDistance = 100000000000
+    cd.MaxActivationDistance = 1000000
     if fireclickdetector then
         fireclickdetector(cd)
     end
@@ -40,45 +41,57 @@ end
 
 local function startMummyQuest()
     clickWindTourist()
-    task.wait(1.5) -- waktu buka dialog
+    task.wait(1.5)
     fireDialogue("Start 'Mummy Return?'")
 end
 
 local function completeMummyQuestOnly()
     clickWindTourist()
-    task.wait(1.5) -- buka dialog selesai quest
+    task.wait(1.5)
     fireDialogue("Yes, I've completed it.")
 end
 
---================ COMBAT / TARGET ================--
+--================ TWEEN KE ANCIENT ================--
 
 local function getLivesFolder()
     return Workspace:FindFirstChild(LIVES_FOLDER_NAME)
 end
 
-local function getNearestMummy()
+local function tweenPlayerToAncientMummy()
+    local lives = getLivesFolder()
+    if not lives then return end
+
+    local ancient = lives:FindFirstChild(ANCIENT_MUMMY_NAME)
+    if not ancient then return end
+
+    local root = ancient:FindFirstChild("HumanoidRootPart") or ancient.PrimaryPart
+    if not root then return end
+
+    local character = player.Character or player.CharacterAdded:Wait()
+    local hrp = character:WaitForChild("HumanoidRootPart")
+
+    local targetPos = root.Position
+    local lookAt = hrp.Position + hrp.CFrame.LookVector
+    local cf = CFrame.new(targetPos, lookAt)
+
+    local info = TweenInfo.new(TWEEN_TIME_TO_SPOT, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(hrp, info, {CFrame = cf})
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+--================ COMBAT / TARGET ================--
+
+local function getAnyNormalMummy()
     local lives = getLivesFolder()
     if not lives then return nil end
 
-    local character = player.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
-    local hrp = character.HumanoidRootPart
-
-    local nearest, dist = nil, math.huge
     for _, child in ipairs(lives:GetChildren()) do
         if child.Name == MUMMY_NAME then
-            local root = child:FindFirstChild("HumanoidRootPart") or child.PrimaryPart
-            if root then
-                local d = (root.Position - hrp.Position).Magnitude
-                if d < dist then
-                    dist = d
-                    nearest = child
-                end
-            end
+            return child
         end
     end
-
-    return nearest
+    return nil
 end
 
 local function getHandlerEvent()
@@ -127,12 +140,10 @@ local function tweenPlayerToTarget(model)
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
 
     local hrp = character.HumanoidRootPart
-    local targetRoot = model:FindFirstChild("HumanoidRootPart")
-        or model:FindFirstChild("Torso")
-        or model.PrimaryPart
-    if not targetRoot then return end
+    local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+    if not root then return end
 
-    local targetPos = targetRoot.Position
+    local targetPos = root.Position
     local playerPos = hrp.Position
     local dir       = targetPos - playerPos
     if dir.Magnitude <= 0 then return end
@@ -144,20 +155,33 @@ local function tweenPlayerToTarget(model)
         finalPos = playerPos
     end
 
-    local info  = TweenInfo.new(TWEEN_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+    local info  = TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
     local tween = TweenService:Create(hrp, info, {CFrame = CFrame.new(finalPos, targetPos)})
     tween:Play()
     tween.Completed:Wait()
 end
 
-local function killOneMummy()
-    local mummy = getNearestMummy()
+--================ KILL COUNTER (DESPAWN) ================--
+
+local killCounter = 0
+local livesFolder = getLivesFolder()
+
+if livesFolder then
+    livesFolder.ChildRemoved:Connect(function(child)
+        if child.Name == MUMMY_NAME then
+            killCounter += 1
+        end
+    end)
+end
+
+local function fightOneMummy()
+    local mummy = getAnyNormalMummy()
     if not mummy then return false end
 
     tweenPlayerToTarget(mummy)
 
     local lives = getLivesFolder()
-    local timeout = tick() + 10 -- anti nyangkut 10 detik
+    local timeout = tick() + 15
 
     while mummy and mummy.Parent == lives and tick() < timeout do
         fireHeavyAttack()
@@ -166,16 +190,18 @@ local function killOneMummy()
         task.wait(ATTACK_DELAY)
     end
 
+    task.wait(0.5) -- beri waktu ChildRemoved kebaca
     return true
 end
 
-local function killSixMummy()
-    for i = 1, 6 do
-        if not killOneMummy() then
-            -- kalau tidak ada mummy, tunggu respawn sebentar
-            task.wait(1)
+local function killExactlySixMummy()
+    killCounter = 0
+
+    while killCounter < 6 do
+        if not fightOneMummy() then
+            task.wait(1) -- tunggu respawn kalau belum ada mummy
         end
-        task.wait(0.2)
+        task.wait(0.1)
     end
 end
 
@@ -189,28 +215,27 @@ local function startAutoMummyLoop()
 
     StarterGui:SetCore("SendNotification", {
         Title = "Auto Mummy Return?",
-        Text  = "ON (Quest + Kill 6 Mummy)",
+        Text  = "ON (NPC -> Quest -> Ancient -> 6 Mummy)",
         Duration = 3
     })
 
     task.spawn(function()
         while autoMummyLoopRunning do
-            -- STEP 1: ambil quest
+            -- 1. pencet NPC & ambil quest (awal looping)
             startMummyQuest()
-
-            -- delay setelah ambil quest sebelum kill
             task.wait(1.5)
 
-            -- STEP 2: bunuh 6 mummy
-            killSixMummy()
+            -- 2. tween ke Ancient Mummy Lv.50 (tengah spot)
+            tweenPlayerToAncientMummy()
 
-            -- delay setelah kill sebelum complete
+            -- 3. kill 6 mummy biasa (despawn counter)
+            killExactlySixMummy()
+
+            -- 4. pencet NPC lagi & complete quest
             task.wait(1)
-
-            -- STEP 3: complete quest
             completeMummyQuestOnly()
 
-            -- delay kecil biar server update, lalu ulang dari STEP 1
+            -- 5. delay kecil, lalu loop lagi dari langkah 1
             task.wait(1)
         end
     end)
