@@ -13,8 +13,9 @@ local LIVES_FOLDER_NAME  = "Lives"
 local MUMMY_NAME         = "Mummy Lv.40"
 local ANCIENT_MUMMY_NAME = "Ancient Mummy Lv.50"
 
+local CUSTOM_POS         = Vector3.new(-1137.5810546875, 25.579374313354492, 228.35084533691406)
 local TWEEN_TIME_TO_SPOT = 1.5
-local APPROACH_DISTANCE  = 5
+local APPROACH_DISTANCE  = 7
 
 local ATTACK_DELAY       = 0.5
 local MOUSE_CFRAME       = CFrame.new(-2678.40234375, 0.7871074, -674.6618652, 1,0,0, 0,1,0, 0,0,1)
@@ -51,12 +52,27 @@ local function completeMummyQuestOnly()
     fireDialogue("Yes, I've completed it.")
 end
 
---================ TWEEN KE ANCIENT ================--
+--================ TWEEN FUNCTIONS ================--
 
 local function getLivesFolder()
     return Workspace:FindFirstChild(LIVES_FOLDER_NAME)
 end
 
+-- tween ke posisi XYZ custom
+local function tweenPlayerToCustom()
+    local character = player.Character or player.CharacterAdded:Wait()
+    local hrp = character:WaitForChild("HumanoidRootPart")
+
+    local lookAt = hrp.Position + hrp.CFrame.LookVector
+    local cf = CFrame.new(CUSTOM_POS, lookAt)
+
+    local info = TweenInfo.new(TWEEN_TIME_TO_SPOT, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(hrp, info, {CFrame = cf})
+    tween:Play()
+    tween.Completed:Wait()
+end
+
+-- tween ke Ancient Mummy Lv.50
 local function tweenPlayerToAncientMummy()
     local lives = getLivesFolder()
     if not lives then return end
@@ -190,7 +206,7 @@ local function fightOneMummy()
         task.wait(ATTACK_DELAY)
     end
 
-    task.wait(0.5) -- beri waktu ChildRemoved kebaca
+    task.wait(0.5)
     return true
 end
 
@@ -199,7 +215,7 @@ local function killExactlySixMummy()
 
     while killCounter < 6 do
         if not fightOneMummy() then
-            task.wait(1) -- tunggu respawn kalau belum ada mummy
+            task.wait(1)
         end
         task.wait(0.1)
     end
@@ -215,27 +231,30 @@ local function startAutoMummyLoop()
 
     StarterGui:SetCore("SendNotification", {
         Title = "Auto Mummy Return?",
-        Text  = "ON (NPC -> Quest -> Ancient -> 6 Mummy)",
+        Text  = "ON (XYZ -> NPC -> Ancient -> 6 Mummy)",
         Duration = 3
     })
 
     task.spawn(function()
         while autoMummyLoopRunning do
-            -- 1. pencet NPC & ambil quest (awal looping)
+            -- 0. tween ke posisi XYZ dulu
+            tweenPlayerToCustom()
+
+            -- 1. pencet NPC & ambil quest
             startMummyQuest()
             task.wait(1.5)
 
-            -- 2. tween ke Ancient Mummy Lv.50 (tengah spot)
+            -- 2. tween ke Ancient Mummy Lv.50
             tweenPlayerToAncientMummy()
 
-            -- 3. kill 6 mummy biasa (despawn counter)
+            -- 3. kill 6 mummy biasa
             killExactlySixMummy()
 
-            -- 4. pencet NPC lagi & complete quest
+            -- 4. pencet NPC & complete quest
             task.wait(1)
             completeMummyQuestOnly()
 
-            -- 5. delay kecil, lalu loop lagi dari langkah 1
+            -- 5. loop lagi (mulai dari tweenPlayerToCustom)
             task.wait(1)
         end
     end)
